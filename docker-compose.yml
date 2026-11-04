@@ -1,0 +1,22 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tmc-postgres
+    environment:
+      POSTGRES_USER: tmc_user
+      POSTGRES_PASSWORD: tmc_password
+      POSTGRES_DB: tmc_attendance
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: tmc-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:
