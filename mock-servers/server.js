@@ -2,6 +2,10 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
+app.get('/health', (_req, res) => {
+  res.json({ status: 'UP' });
+});
+
 // Giả lập cổng xoay vật lý Turnstile Controller
 app.post('/api/turnstile/unlock', (req, res) => {
   console.log(`[TURNSTILE MOCK] Mở cổng: ${req.body.gateId} | Mã giao dịch: ${req.body.transactionId}`);
