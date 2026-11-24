@@ -26,6 +26,13 @@ public class InMemoryGateRepository implements GateRepositoryPort {
 	}
 
 	@Override
+	public Optional<GateStation> findByCode(String code) {
+		return store.values().stream()
+				.filter(g -> code != null && code.equals(g.getCode()))
+				.findFirst();
+	}
+
+	@Override
 	public GateStation save(GateStation gate) {
 		if (gate.getId() == null) {
 			gate.setId(UUID.randomUUID());

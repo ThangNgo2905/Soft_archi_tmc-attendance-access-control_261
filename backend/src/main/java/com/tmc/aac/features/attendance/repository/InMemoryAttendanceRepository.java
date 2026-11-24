@@ -3,9 +3,9 @@ package com.tmc.aac.features.attendance.repository;
 import com.tmc.aac.features.attendance.domain.AttendanceEvent;
 import org.springframework.stereotype.Repository;
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -30,5 +30,26 @@ public class InMemoryAttendanceRepository implements AttendanceRepositoryPort {
 		}
 		store.add(event);
 		return event;
+	}
+
+	@Override
+	public boolean existsByNonce(String nonce) {
+		return nonce != null && store.stream()
+				.anyMatch(e -> nonce.equals(e.getNonce()));
+	}
+
+	@Override
+	public Optional<AttendanceEvent> findByTransactionId(String transactionId) {
+		return store.stream()
+				.filter(e -> transactionId != null && transactionId.equals(e.getTransactionId()))
+				.findFirst();
+	}
+
+	@Override
+	public Optional<AttendanceEvent> findLatestByEmployeeId(UUID employeeId) {
+		return store.stream()
+				.filter(e -> employeeId != null && employeeId.equals(e.getEmployeeId()))
+				.max(Comparator.comparing(AttendanceEvent::getOccurredAt,
+						Comparator.nullsFirst(Comparator.naturalOrder())));
 	}
 }

@@ -8,6 +8,7 @@ public class GateStation {
 	private String code;
 	private String name;
 	private String factoryCode;
+	private GateDirection direction;
 	private boolean active;
 
 	public UUID getId() {
@@ -40,6 +41,14 @@ public class GateStation {
 
 	public void setFactoryCode(String factoryCode) {
 		this.factoryCode = factoryCode;
+	}
+
+	public GateDirection getDirection() {
+		return direction;
+	}
+
+	public void setDirection(GateDirection direction) {
+		this.direction = direction;
 	}
 
 	public boolean isActive() {

@@ -11,7 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Temporary adapter until JPA mapping is implemented.
+ * In-memory adapter kept for unit tests and non-JPA contexts.
  */
 @Repository
 public class InMemoryEmployeeRepository implements EmployeeRepositoryPort {
@@ -26,6 +26,13 @@ public class InMemoryEmployeeRepository implements EmployeeRepositoryPort {
 	@Override
 	public Optional<Employee> findById(UUID id) {
 		return Optional.ofNullable(store.get(id));
+	}
+
+	@Override
+	public Optional<Employee> findByEmployeeCode(String employeeCode) {
+		return store.values().stream()
+				.filter(e -> employeeCode != null && employeeCode.equals(e.getEmployeeCode()))
+				.findFirst();
 	}
 
 	@Override

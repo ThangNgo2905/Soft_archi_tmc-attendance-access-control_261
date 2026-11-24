@@ -11,6 +11,8 @@ public class AttendanceEvent {
 	private AttendanceDirection direction;
 	private Instant occurredAt;
 	private String transactionId;
+	private String nonce;
+	private AttendanceStatus status;
 
 	public UUID getId() {
 		return id;
@@ -58,5 +60,21 @@ public class AttendanceEvent {
 
 	public void setTransactionId(String transactionId) {
 		this.transactionId = transactionId;
+	}
+
+	public String getNonce() {
+		return nonce;
+	}
+
+	public void setNonce(String nonce) {
+		this.nonce = nonce;
+	}
+
+	public AttendanceStatus getStatus() {
+		return status;
+	}
+
+	public void setStatus(AttendanceStatus status) {
+		this.status = status;
 	}
 }

@@ -1,7 +1,8 @@
 package com.tmc.aac.features.attendance.controller;
 
-import com.tmc.aac.features.attendance.service.AttendanceService;
 import com.tmc.aac.features.attendance.domain.AttendanceEvent;
+import com.tmc.aac.features.attendance.domain.ScanResult;
+import com.tmc.aac.features.attendance.service.AttendanceService;
 import com.tmc.aac.shared.api.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -14,10 +15,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/attendance")
-@Tag(name = "Attendance", description = "Attendance event recording (scaffold)")
+@RequestMapping({"/api/v1/attendance", "/api/attendance"})
+@Tag(name = "Attendance", description = "QR scan validation, turnstile unlock, and append-only attendance logging")
 public class AttendanceController {
 
 	private final AttendanceService attendanceService;
@@ -34,8 +36,31 @@ public class AttendanceController {
 	}
 
 	@PostMapping("/scan")
-	@Operation(summary = "Record a QR scan at a gate (not implemented yet)")
-	public ApiResponse<AttendanceEvent> scan(@Valid @RequestBody ScanRequest request) {
-		return ApiResponse.ok(attendanceService.recordScan(request.qrPayload(), request.gateCode()));
+	@Operation(summary = "Validate dynamic QR, enforce anti-passback, unlock turnstile, and persist attendance")
+	public ApiResponse<ScanResult> scan(@Valid @RequestBody ScanRequest request) {
+		ScanResult result = attendanceService.recordScan(request);
+		return ApiResponse.ok("Attendance recorded and turnstile unlocked", result);
+	}
+
+	@PostMapping("/sync")
+	@Operation(summary = "Sync offline Store-and-Forward attendance scan from Edge Kiosk")
+	public ApiResponse<ScanResult> syncOffline(@Valid @RequestBody ScanRequest request) {
+		ScanRequest syncRequest = new ScanRequest(
+				request.qrPayload(),
+				request.gateCode(),
+				request.transactionId(),
+				request.occurredAt(),
+				true
+		);
+		ScanResult result = attendanceService.recordScan(syncRequest);
+		return ApiResponse.ok("Offline attendance event synced", result);
+	}
+
+	@GetMapping("/qr-token")
+	@Operation(summary = "Generate a signed Dynamic QR payload for an employee (FR-01 / testing)")
+	public ApiResponse<Map<String, String>> generateQrToken(
+			@RequestParam(defaultValue = "EMP001") String employeeCode) {
+		String qrPayload = attendanceService.generateSampleQr(employeeCode);
+		return ApiResponse.ok(Map.of("employeeCode", employeeCode, "qrPayload", qrPayload));
 	}
 }
