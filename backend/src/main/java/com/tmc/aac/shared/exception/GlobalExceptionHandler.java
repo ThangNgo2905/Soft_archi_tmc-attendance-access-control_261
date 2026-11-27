@@ -1,6 +1,9 @@
 package com.tmc.aac.shared.exception;
 
 import com.tmc.aac.shared.api.ApiResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -11,6 +14,8 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+	private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
 	@ExceptionHandler(BadRequestException.class)
 	public ResponseEntity<ApiResponse<Void>> handleBadRequest(BadRequestException ex) {
@@ -53,9 +58,18 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(ApiResponse.fail(ex.getMessage()));
 	}
 
+	/** Safety net for UNIQUE violations not translated by a repository adapter; never leak SQL text. */
+	@ExceptionHandler(DataIntegrityViolationException.class)
+	public ResponseEntity<ApiResponse<Void>> handleIntegrity(DataIntegrityViolationException ex) {
+		log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ApiResponse.fail("REPLAY_NONCE_DETECTED: QR token or transaction has already been used"));
+	}
+
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<ApiResponse<Void>> handleGeneric(Exception ex) {
+		log.error("Unhandled error", ex);
 		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-				.body(ApiResponse.fail(ex.getMessage() != null ? ex.getMessage() : "Unexpected error"));
+				.body(ApiResponse.fail("Unexpected error"));
 	}
 }

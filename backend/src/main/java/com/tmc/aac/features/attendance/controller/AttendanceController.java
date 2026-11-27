@@ -38,7 +38,15 @@ public class AttendanceController {
 	@PostMapping("/scan")
 	@Operation(summary = "Validate dynamic QR, enforce anti-passback, unlock turnstile, and persist attendance")
 	public ApiResponse<ScanResult> scan(@Valid @RequestBody ScanRequest request) {
-		ScanResult result = attendanceService.recordScan(request);
+		// Online path: never trust a client-supplied offline flag (it would skip anti-passback).
+		ScanRequest onlineRequest = new ScanRequest(
+				request.qrPayload(),
+				request.gateCode(),
+				request.transactionId(),
+				request.occurredAt(),
+				false
+		);
+		ScanResult result = attendanceService.recordScan(onlineRequest);
 		return ApiResponse.ok("Attendance recorded and turnstile unlocked", result);
 	}
 

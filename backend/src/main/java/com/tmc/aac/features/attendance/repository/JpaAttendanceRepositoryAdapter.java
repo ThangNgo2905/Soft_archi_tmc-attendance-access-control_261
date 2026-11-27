@@ -2,7 +2,9 @@ package com.tmc.aac.features.attendance.repository;
 
 import com.tmc.aac.features.attendance.domain.AttendanceEvent;
 import com.tmc.aac.features.attendance.domain.AttendanceStatus;
+import com.tmc.aac.shared.exception.ConflictException;
 import org.springframework.context.annotation.Primary;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
@@ -35,8 +37,12 @@ public class JpaAttendanceRepositoryAdapter implements AttendanceRepositoryPort 
 	@Override
 	public AttendanceEvent save(AttendanceEvent event) {
 		AttendanceEventJpaEntity entity = toEntity(event);
-		AttendanceEventJpaEntity saved = jpaRepository.save(entity);
-		return toDomain(saved);
+		try {
+			AttendanceEventJpaEntity saved = jpaRepository.saveAndFlush(entity);
+			return toDomain(saved);
+		} catch (DataIntegrityViolationException ex) {
+			throw new ConflictException("REPLAY_NONCE_DETECTED: QR token or transaction has already been used");
+		}
 	}
 
 	@Override

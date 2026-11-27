@@ -9,13 +9,19 @@ import com.tmc.aac.shared.exception.GlobalExceptionHandler;
 import com.tmc.aac.shared.exception.InvalidQrException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.Instant;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -93,6 +99,42 @@ class AttendanceControllerTest {
 						.content("{\"qrPayload\":\"bad\",\"gateCode\":\"GATE_BD_IN_01\"}"))
 				.andExpect(status().isUnauthorized())
 				.andExpect(jsonPath("$.success").value(false));
+	}
+
+	@Test
+	void scanEndpointIgnoresClientOfflineFlag() throws Exception {
+		mockMvc.perform(post("/api/v1/attendance/scan")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"qrPayload\":\"{}\",\"gateCode\":\"GATE_BD_IN_01\",\"offlineSync\":true}"))
+				.andExpect(status().isOk());
+
+		ArgumentCaptor<ScanRequest> captor = ArgumentCaptor.forClass(ScanRequest.class);
+		verify(attendanceService).recordScan(captor.capture());
+		assertFalse(captor.getValue().offlineSync());
+	}
+
+	@Test
+	void dataIntegrityViolationReturns409WithoutSqlDetails() throws Exception {
+		when(attendanceService.recordScan(any(ScanRequest.class)))
+				.thenThrow(new DataIntegrityViolationException("duplicate key violates unique constraint attendance_events_nonce_key"));
+
+		mockMvc.perform(post("/api/v1/attendance/scan")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"qrPayload\":\"{}\",\"gateCode\":\"GATE_BD_IN_01\"}"))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value(not(containsString("constraint"))));
+	}
+
+	@Test
+	void unexpectedErrorReturns500WithoutInternalMessage() throws Exception {
+		when(attendanceService.recordScan(any(ScanRequest.class)))
+				.thenThrow(new IllegalStateException("PSQLException: internal detail"));
+
+		mockMvc.perform(post("/api/v1/attendance/scan")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"qrPayload\":\"{}\",\"gateCode\":\"GATE_BD_IN_01\"}"))
+				.andExpect(status().isInternalServerError())
+				.andExpect(jsonPath("$.message").value("Unexpected error"));
 	}
 
 	@Test

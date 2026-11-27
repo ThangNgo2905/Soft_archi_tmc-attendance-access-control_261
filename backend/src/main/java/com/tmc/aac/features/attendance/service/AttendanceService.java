@@ -1,5 +1,17 @@
 package com.tmc.aac.features.attendance.service;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.tmc.aac.features.attendance.controller.ScanRequest;
 import com.tmc.aac.features.attendance.domain.AttendanceDirection;
 import com.tmc.aac.features.attendance.domain.AttendanceEvent;
@@ -14,19 +26,10 @@ import com.tmc.aac.features.gate.repository.GateRepositoryPort;
 import com.tmc.aac.features.integration.repository.TurnstilePort;
 import com.tmc.aac.features.user.domain.Employee;
 import com.tmc.aac.features.user.repository.EmployeeRepositoryPort;
+import com.tmc.aac.shared.exception.BadRequestException;
 import com.tmc.aac.shared.exception.ConflictException;
 import com.tmc.aac.shared.exception.ExternalServiceException;
 import com.tmc.aac.shared.exception.ResourceNotFoundException;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Clock;
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 @Service
 public class AttendanceService {
@@ -37,6 +40,8 @@ public class AttendanceService {
 	private final TurnstilePort turnstilePort;
 	private final QrTokenService qrTokenService;
 	private final boolean antiPassbackEnabled;
+	private final Duration maxOfflineAge;
+	private final Duration clockSkew;
 	private final Clock clock;
 
 	@Autowired
@@ -49,7 +54,8 @@ public class AttendanceService {
 			@Value("${tmc.qr.ttl-seconds:30}") long ttlSeconds,
 			@Value("${tmc.qr.clock-skew-seconds:5}") long clockSkewSeconds,
 			@Value("${tmc.qr.allow-unsigned-dev:false}") boolean allowUnsignedDev,
-			@Value("${tmc.attendance.anti-passback-enabled:true}") boolean antiPassbackEnabled) {
+			@Value("${tmc.attendance.anti-passback-enabled:true}") boolean antiPassbackEnabled,
+			@Value("${tmc.attendance.max-offline-age-hours:24}") long maxOfflineAgeHours) {
 		this(
 				attendanceRepository,
 				employeeRepository,
@@ -57,6 +63,8 @@ public class AttendanceService {
 				turnstilePort,
 				new QrTokenService(hmacSecret, ttlSeconds, clockSkewSeconds, allowUnsignedDev),
 				antiPassbackEnabled,
+				Duration.ofHours(maxOfflineAgeHours),
+				Duration.ofSeconds(clockSkewSeconds),
 				Clock.systemUTC()
 		);
 	}
@@ -68,6 +76,8 @@ public class AttendanceService {
 			TurnstilePort turnstilePort,
 			QrTokenService qrTokenService,
 			boolean antiPassbackEnabled,
+			Duration maxOfflineAge,
+			Duration clockSkew,
 			Clock clock) {
 		this.attendanceRepository = attendanceRepository;
 		this.employeeRepository = employeeRepository;
@@ -75,6 +85,8 @@ public class AttendanceService {
 		this.turnstilePort = turnstilePort;
 		this.qrTokenService = qrTokenService;
 		this.antiPassbackEnabled = antiPassbackEnabled;
+		this.maxOfflineAge = maxOfflineAge;
+		this.clockSkew = clockSkew;
 		this.clock = clock;
 	}
 
@@ -92,7 +104,11 @@ public class AttendanceService {
 		}
 
 		boolean isOfflineSync = Boolean.TRUE.equals(request.offlineSync());
-		Instant occurredAt = request.occurredAt() != null ? request.occurredAt() : Instant.now(clock);
+		// Online scans are timed by the server clock; only offline sync may carry a client timestamp,
+		// and that timestamp must fall inside the allowed offline window.
+		Instant occurredAt = isOfflineSync
+				? validateOfflineTimestamp(request.occurredAt())
+				: Instant.now(clock);
 
 		ParsedQrToken token = qrTokenService.parseAndValidate(request.qrPayload(), occurredAt);
 
@@ -118,11 +134,6 @@ public class AttendanceService {
 			enforceAntiPassback(employee.getId(), direction);
 		}
 
-		boolean turnstileOpened = false;
-		if (!isOfflineSync) {
-			turnstileOpened = unlockTurnstile(gate.getCode(), transactionId);
-		}
-
 		AttendanceEvent event = new AttendanceEvent();
 		event.setId(UUID.randomUUID());
 		event.setTransactionId(transactionId);
@@ -130,10 +141,18 @@ public class AttendanceService {
 		event.setGateId(gate.getId());
 		event.setDirection(direction);
 		event.setNonce(token.nonce());
-		event.setStatus(AttendanceStatus.GRANTED);
+		event.setStatus(isOfflineSync ? AttendanceStatus.SYNCED_OFFLINE : AttendanceStatus.GRANTED);
 		event.setOccurredAt(occurredAt);
 
+		// Persist (and flush) first: a concurrent replay of the same nonce fails here on the UNIQUE
+		// constraint, before the turnstile is touched. If unlocking fails afterwards, the exception
+		// rolls back this transaction so no GRANTED row is left without an opened gate.
 		AttendanceEvent saved = attendanceRepository.save(event);
+
+		boolean turnstileOpened = false;
+		if (!isOfflineSync) {
+			turnstileOpened = unlockTurnstile(gate.getCode(), transactionId);
+		}
 
 		return new ScanResult(
 				saved.getTransactionId(),
@@ -156,6 +175,21 @@ public class AttendanceService {
 				Instant.now(clock),
 				UUID.randomUUID().toString()
 		);
+	}
+
+	private Instant validateOfflineTimestamp(Instant occurredAt) {
+		if (occurredAt == null) {
+			throw new BadRequestException("OFFLINE_SYNC_TIMESTAMP_REQUIRED: scannedAt is required for offline sync");
+		}
+		Instant now = Instant.now(clock);
+		if (occurredAt.isAfter(now.plus(clockSkew))) {
+			throw new BadRequestException("OFFLINE_SYNC_FUTURE_TIMESTAMP: scannedAt is in the future");
+		}
+		if (occurredAt.isBefore(now.minus(maxOfflineAge))) {
+			throw new BadRequestException("OFFLINE_SYNC_TOO_OLD: scannedAt is older than the allowed offline window of "
+					+ maxOfflineAge.toHours() + "h");
+		}
+		return occurredAt;
 	}
 
 	private void enforceAntiPassback(UUID employeeId, AttendanceDirection nextDirection) {

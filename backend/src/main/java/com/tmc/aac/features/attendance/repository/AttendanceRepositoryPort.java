@@ -10,6 +10,12 @@ public interface AttendanceRepositoryPort {
 
 	List<AttendanceEvent> findRecent(int limit);
 
+	/**
+	 * Persists the event immediately (not deferred to commit), so uniqueness violations surface
+	 * before any side effect such as unlocking a turnstile.
+	 *
+	 * @throws com.tmc.aac.shared.exception.ConflictException if the nonce or transaction id already exists
+	 */
 	AttendanceEvent save(AttendanceEvent event);
 
 	boolean existsByNonce(String nonce);

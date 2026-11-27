@@ -1,6 +1,7 @@
 package com.tmc.aac.features.attendance.repository;
 
 import com.tmc.aac.features.attendance.domain.AttendanceEvent;
+import com.tmc.aac.shared.exception.ConflictException;
 import org.springframework.stereotype.Repository;
 
 import java.util.Comparator;
@@ -24,7 +25,13 @@ public class InMemoryAttendanceRepository implements AttendanceRepositoryPort {
 	}
 
 	@Override
-	public AttendanceEvent save(AttendanceEvent event) {
+	public synchronized AttendanceEvent save(AttendanceEvent event) {
+		boolean duplicate = store.stream().anyMatch(e ->
+				(event.getNonce() != null && event.getNonce().equals(e.getNonce()))
+						|| (event.getTransactionId() != null && event.getTransactionId().equals(e.getTransactionId())));
+		if (duplicate) {
+			throw new ConflictException("REPLAY_NONCE_DETECTED: QR token or transaction has already been used");
+		}
 		if (event.getId() == null) {
 			event.setId(UUID.randomUUID());
 		}

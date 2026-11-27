@@ -1,10 +1,11 @@
 package com.tmc.aac.features.integration.repository;
 
-import com.tmc.aac.features.integration.repository.TurnstilePort;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.time.Duration;
 import java.util.Map;
 
 @Component
@@ -14,8 +15,16 @@ public class RestTurnstileClient implements TurnstilePort {
 
 	public RestTurnstileClient(
 			RestClient.Builder builder,
-			@Value("${tmc.integration.turnstile.base-url}") String baseUrl) {
-		this.restClient = builder.baseUrl(baseUrl).build();
+			@Value("${tmc.integration.turnstile.base-url}") String baseUrl,
+			@Value("${tmc.integration.turnstile.connect-timeout-ms:500}") long connectTimeoutMs,
+			@Value("${tmc.integration.turnstile.read-timeout-ms:1200}") long readTimeoutMs) {
+		SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+		requestFactory.setConnectTimeout(Duration.ofMillis(connectTimeoutMs));
+		requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
+		this.restClient = builder
+				.baseUrl(baseUrl)
+				.requestFactory(requestFactory)
+				.build();
 	}
 
 	@Override
