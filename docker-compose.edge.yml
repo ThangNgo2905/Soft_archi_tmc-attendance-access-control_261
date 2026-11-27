@@ -1,0 +1,51 @@
+name: tmc-edge-demo
+services:
+  edge-mocks:
+    build: ./edge-kiosk/demo-mocks
+    ports:
+      - "127.0.0.1:4101:4101"
+      - "127.0.0.1:4102:4102"
+      - "127.0.0.1:4103:4103"
+    volumes:
+      - edge-mock-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4101/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  edge-kiosk:
+    build: ./edge-kiosk
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      SPRING_PROFILES_ACTIVE: demo
+      REGISTRY_URL: http://edge-mocks:4101
+      TURNSTILE_URL: http://edge-mocks:4102
+      CORE_URL: http://edge-mocks:4103
+    volumes:
+      - edge-kiosk-data:/data
+    depends_on:
+      edge-mocks:
+        condition: service_healthy
+  edge-kiosk-out:
+    profiles: [two-lanes]
+    build: ./edge-kiosk
+    ports:
+      - "127.0.0.1:8091:8090"
+    environment:
+      SPRING_PROFILES_ACTIVE: demo
+      KIOSK_ID: BD-OUT-01
+      GATE_ID: BD-GATE-OUT-01
+      GATE_DIRECTION: OUT
+      REGISTRY_URL: http://edge-mocks:4101
+      TURNSTILE_URL: http://edge-mocks:4102
+      CORE_URL: http://edge-mocks:4103
+    volumes:
+      - edge-kiosk-out-data:/data
+    depends_on:
+      edge-mocks:
+        condition: service_healthy
+volumes:
+  edge-mock-data:
+  edge-kiosk-data:
+  edge-kiosk-out-data:

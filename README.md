@@ -76,4 +76,9 @@ cd frontend && npm install && npm run dev
 
 ## Scope note
 
+The independent **Edge Kiosk & Scanner demo** now lives in [`edge-kiosk/`](edge-kiosk/README.md).
+Run `docker compose -f docker-compose.edge.yml up --build -d` for the kiosk and
+simulated Core/Registry/Turnstile, without starting the central stack. The existing
+backend remains a scaffold; the demo does not implement Core ingestion.
+
 This repository currently scaffolds **structure and docs**. Core domain features (QR, gate unlock, RBAC) are implemented in later increments. See [ADR 0002](docs/adr/0002-auth-deferred.md) for deferred auth.
