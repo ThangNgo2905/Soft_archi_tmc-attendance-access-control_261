@@ -172,3 +172,7 @@ Thumbs.db
 *.swp
 *~
 
+# Local browser verification artifacts
+.playwright-cli/
+output/playwright/
+
