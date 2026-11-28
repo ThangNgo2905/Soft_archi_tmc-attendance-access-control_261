@@ -12,5 +12,7 @@ public interface GateRepositoryPort {
 
 	Optional<GateStation> findById(UUID id);
 
+	Optional<GateStation> findByCode(String code);
+
 	GateStation save(GateStation gate);
 }

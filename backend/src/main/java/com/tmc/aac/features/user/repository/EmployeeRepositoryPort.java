@@ -12,5 +12,7 @@ public interface EmployeeRepositoryPort {
 
 	Optional<Employee> findById(UUID id);
 
+	Optional<Employee> findByEmployeeCode(String employeeCode);
+
 	Employee save(Employee employee);
 }
